@@ -1,0 +1,7 @@
+{
+  "appId": "com.esje.addtodo",
+  "appName": "Add To Do",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "backgroundColor": "#0a0a0a"
+}
