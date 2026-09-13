@@ -1,0 +1,119 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install AdMob plugin
+        run: npm install @capacitor-community/admob@6
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Add AdMob App ID to Android project
+        # android/ is regenerated fresh above, so the App ID has to be
+        # injected here every run â€” a one-time manual edit would get wiped
+        # out on the next build.
+        env:
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+        run: |
+          python3 - << 'PYEOF'
+          import os, re
+
+          app_id = os.environ["ADMOB_APP_ID"]
+
+          # 1. Add the string resource strings.xml expects
+          strings_path = "android/app/src/main/res/values/strings.xml"
+          with open(strings_path, "r") as f:
+              strings_xml = f.read()
+          new_string = f'    <string name="admob_app_id">{app_id}</string>\n'
+          strings_xml = strings_xml.replace("</resources>", new_string + "</resources>")
+          with open(strings_path, "w") as f:
+              f.write(strings_xml)
+
+          # 2. Add the meta-data element inside <application ...>
+          manifest_path = "android/app/src/main/AndroidManifest.xml"
+          with open(manifest_path, "r") as f:
+              manifest = f.read()
+          meta_data = (
+              '\n        <meta-data\n'
+              '            android:name="com.google.android.gms.ads.APPLICATION_ID"\n'
+              '            android:value="@string/admob_app_id" />'
+          )
+          # Insert right after the opening <application ...> tag's closing '>'
+          manifest = re.sub(r'(<application\b[^>]*>)', r'\1' + meta_data, manifest, count=1)
+          with open(manifest_path, "w") as f:
+              f.write(manifest)
+
+          print("AdMob App ID injected into strings.xml and AndroidManifest.xml")
+          PYEOF
+
+      - name: Install asset generator
+        run: npm install @capacitor/assets --save-dev
+
+      - name: Generate native icons and splash
+        run: npx @capacitor/assets generate --android
+
+      - name: Sync web assets into native project
+        run: npx cap sync android
+
+      - name: Use persistent release signing key
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          cp keystore/release.keystore android/app/release.keystore
+          cat >> android/app/build.gradle << GRADLE
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("release.keystore")
+                      storePassword "${KEYSTORE_PASSWORD}"
+                      keyAlias "addtodorelease"
+                      keyPassword "${KEYSTORE_PASSWORD}"
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+              }
+          }
+          GRADLE
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      - name: Build release APK
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: add-to-do-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
