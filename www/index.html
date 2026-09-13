@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content" />
+<title>Add To Do</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="theme-color" content="#141414" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    overflow: hidden; overscroll-behavior: none;
+    background: #0a0a0a;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #app {
+    height: 100dvh; width: 100%;
+    background: #141414;
+    display: flex; flex-direction: column;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header {
+    margin: 14px 14px 6px 14px;
+    padding: 8px 10px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #1F1F1F;
+    border: 1px solid rgba(244, 243, 239, 0.15);
+    border-radius: 16px;
+  }
+  header h1 {
+    color: #F4F3EF; font-size: 30px; font-weight: 700;
+    letter-spacing: -0.02em; margin: 0;
+    flex: 1; text-align: center;
+  }
+  #history-btn, #emoji-edit-btn {
+    width: 45px; height: 40px; border-radius: 20px;
+    background: #1F1F1F; border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+  }
+  #history-btn svg, #emoji-edit-btn svg, #emoji-toggle svg, #add-btn svg { flex-shrink: 0; pointer-events: none; }
+  #list {
+    flex: 1; min-height: 0; overflow-y: auto; padding: 6px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .row-wrap {
+    position: relative; height: 72px; border-radius: 16px;
+    overflow: hidden; flex-shrink: 0;
+  }
+  .reveal {
+    position: absolute; inset: 0; display: flex; align-items: center;
+  }
+  .reveal.right { justify-content: flex-start; padding-left: 18px; background: #2E8A57; }
+  .reveal.left { justify-content: flex-end; padding-right: 18px; background: #C0473A; }
+  .row {
+    position: relative; height: 100%; background: #1F1F1F;
+    border: 1px solid rgba(244, 243, 239, 0.15); border-radius: 16px;
+    display: flex; align-items: center; gap: 12px; padding: 0 16px;
+    touch-action: none; user-select: none; cursor: grab;
+  }
+  .emoji-slot { width: 26px; height: 26px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .task-text {
+    flex: 1; color: #F4F3EF; font-size: 16px; line-height: 19px; font-weight: 400;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #undo-toast {
+    position: absolute; bottom: 92px; left: 50%; transform: translateX(-50%);
+    background: #1F1F1F; border: 1px solid #2E2E2E; border-radius: 16px;
+    padding: 8px 16px; display: none; align-items: center; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 50;
+  }
+  #undo-toast.show { display: flex; animation: toastIn 0.18s ease-out; }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(6px);} to { opacity: 1; transform: translateX(-50%) translateY(0);} }
+  #undo-btn { background: none; border: none; padding: 0; display: flex; cursor: pointer; }
+  footer { padding: 12px 14px 22px 14px; flex-shrink: 0; }
+  .input-bar {
+    display: flex; align-items: center; background: #1F1F1F;
+    border: 1px solid rgba(244, 243, 239, 0.15); border-radius: 16px; height: 54px; padding: 0 10px; gap: 6px;
+  }
+  #task-input {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: #F4F3EF; font-size: 16px; margin-left: 2px;
+    align-self: center; text-align: left;
+  }
+  #task-input::placeholder { color: #A0A0A0; font-style: normal; font-size: 18px; }
+  #add-btn {
+    width: 38px; height: 38px; border-radius: 16px; background: transparent; border: none;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+  }
+  #emoji-toggle {
+    width: 38px; height: 38px; border-radius: 50%; background: transparent; border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+  }
+  #emoji-panel {
+    display: none; overflow-x: auto; white-space: nowrap; gap: 6px;
+    padding: 4px 4px 10px 4px; -webkit-overflow-scrolling: touch;
+  }
+  #emoji-panel.show { display: flex; }
+  #emoji-panel button, .my-emoji-btn, .available-emoji-btn {
+    flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px;
+    background: #1B1B1B; border: 1px solid #2A2A2A; font-size: 18px; padding: 0;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    box-sizing: border-box;
+  }
+  .row--flash-delete { background: #F4F3EF !important; transition: background 0.15s ease; }
+  .row--flash-delete .task-text,
+  .row--flash-delete .emoji-slot { opacity: 0; transition: none; }
+  .center-delete-icon {
+    position: absolute; top: 50%; left: 50%; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transform: translate(-50%, -50%) scale(0.3);
+    animation: centerDeleteZoom 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  @keyframes centerDeleteZoom {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+    60% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+  #history-overlay {
+    position: fixed; inset: 0; background: rgba(10,10,10,0.72);
+    display: none; z-index: 100;
+  }
+  #history-overlay.show { display: block; animation: overlayIn 0.18s ease-out; }
+  @keyframes overlayIn { from { opacity: 0; } to { overlayIn: 1; } }
+  #history-panel {
+    position: absolute; top: calc(env(safe-area-inset-top) + 83px);
+    left: 14px; right: 14px;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    background: #141414;
+    border-radius: 20px; border: 1px solid rgba(244, 243, 239, 0.15);
+    padding: 18px; display: flex; flex-direction: column;
+    transform: scale(0.92); opacity: 0; transform-origin: top right;
+    transition: transform 0.18s ease-out, opacity 0.18s ease-out;
+    -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+    box-sizing: border-box;
+  }
+  #history-overlay.show #history-panel { transform: scale(1); opacity: 1; }
+  .history-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; flex-shrink: 0;
+  }
+  .history-head h2 { color: #F4F3EF; font-size: 22px; font-weight: 700; margin: 0; }
+  #history-list {
+    overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .history-row {
+    display: flex; align-items: center; gap: 10px;
+    background: #1B1B1B; border: 1px solid #2A2A2A; border-radius: 14px; padding: 10px 14px;
+  }
+  .history-icon {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .history-icon.tick { background: rgba(46,138,87,0.25); color: #4CC97F; }
+  .history-icon.cross { background: rgba(192,71,58,0.25); color: #E5484D; }
+  .history-text {
+    flex: 1; color: #F4F3EF; font-size: 14px; line-height: 18px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .history-empty {
+    color: #A0A0A0; font-style: italic; text-align: center;
+    padding: 34px 0; font-size: 14px;
+  }
+
+  /* Emoji customization */
+  #emoji-customize {
+    position: fixed; inset: 0; background: rgba(10,10,10,0.72);
+    display: none; z-index: 90;
+  }
+  #emoji-customize.show { display: block; animation: overlayIn 0.18s ease-out; }
+  #emoji-customize-panel {
+    position: absolute; top: calc(env(safe-area-inset-top) + 83px);
+    left: 14px; right: 14px;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    background: #141414;
+    border-radius: 20px; border: 1px solid rgba(244, 243, 239, 0.15);
+    padding: 18px 18px 14px 18px; display: flex; flex-direction: column;
+    overflow: hidden;
+    transform: scale(0.92); opacity: 0; transform-origin: top left;
+    transition: transform 0.18s ease-out, opacity 0.18s ease-out;
+    -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+    box-sizing: border-box;
+  }
+  #emoji-customize.show #emoji-customize-panel { transform: scale(1); opacity: 1; }
+  .customize-head { display: flex; align-items: center; justify-content: flex-start; margin-bottom: 12px; flex-shrink: 0; }
+  .customize-head h2 { color: #F4F3EF; font-size: 22px; font-weight: 700; margin: 0; }
+  
+  /* Solid box matching customize screen background (#141414) with a tiny white stroke */
+  .my-emojis-box {
+    background: #1F1F1F;
+    border: 1px solid rgba(244, 243, 239, 0.15);
+    border-radius: 16px;
+    padding: 8px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+    transition: background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .my-emojis-box.drag-hover {
+    background: #1A1A1A;
+    border-color: rgba(244, 243, 239, 0.45);
+    box-shadow: 0 0 0 1px rgba(244, 243, 239, 0.25);
+  }
+  #my-emojis { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+
+  /* Scrollable section containing only the exchange list */
+  .customize-scroll-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+    padding-top: 2px;
+    padding-bottom: 4px;
+  }
+
+  /* When drag is active, lock scroll container completely */
+  .customize-scroll-body.scroll-locked {
+    overflow-y: hidden !important;
+    touch-action: none !important;
+  }
+
+  /* Padding matches .my-emojis-box (8px + 1px border = 9px) so columns remain perfectly aligned */
+  #available-emojis {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+    padding: 0 9px;
+    touch-action: pan-y;
+  }
+
+  .my-emoji-btn, .available-emoji-btn {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    height: auto;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: transform 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
+  }
+
+  /* Available emoji buttons allow vertical panning until dragged */
+  .available-emoji-btn {
+    touch-action: pan-y;
+    cursor: grab;
+  }
+
+  .my-emoji-btn {
+    touch-action: none;
+    cursor: default;
+  }
+
+  .my-emoji-btn.drop-target {
+    border-color: #F4F3EF !important;
+    background: #2E2E2E !important;
+    transform: scale(1.16);
+    box-shadow: 0 0 12px rgba(244, 243, 239, 0.35);
+    z-index: 10;
+  }
+
+  .my-emoji-btn.replace-flash, .available-emoji-btn.replace-flash {
+    animation: replaceFlash 0.32s ease-out;
+  }
+  @keyframes replaceFlash {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.24); background: #383838; }
+    100% { transform: scale(1); }
+  }
+
+  .available-emoji-btn.drag-source {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+
+  /* Dragging ghost badge */
+  #emoji-drag-ghost {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: #252525;
+    border: 1px solid rgba(244, 243, 239, 0.5);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%) scale(1.12);
+    transition: transform 0.08s ease-out;
+  }
+  #emoji-drag-ghost.active {
+    display: flex;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <button id="emoji-edit-btn" aria-label="Customize emoji list">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#FFFFFF" stroke="none">
+        <circle cx="5" cy="6" r="1.5"/>
+        <circle cx="12" cy="6" r="1.5"/>
+        <circle cx="19" cy="6" r="1.5"/>
+        <circle cx="5" cy="12" r="1.5"/>
+        <circle cx="12" cy="12" r="1.5"/>
+        <circle cx="19" cy="12" r="1.5"/>
+        <circle cx="5" cy="18" r="1.5"/>
+        <circle cx="12" cy="18" r="1.5"/>
+        <circle cx="19" cy="18" r="1.5"/>
+      </svg>
+    </button>
+    <h1>Add To Do</h1>
+    <button id="history-btn" aria-label="View today's history">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    </button>
+  </header>
+  <div id="list"></div>
+  <footer>
+    <div id="emoji-panel"></div>
+    <div class="input-bar">
+      <button id="emoji-toggle" aria-label="Choose emoji">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#A0A0A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <circle cx="9" cy="10" r="0.7" fill="#A0A0A0" stroke="none"/>
+          <circle cx="15" cy="10" r="0.7" fill="#A0A0A0" stroke="none"/>
+          <path d="M8.5 14.5c1 1.2 2.2 1.8 3.5 1.8s2.5-.6 3.5-1.8"/>
+        </svg>
+      </button>
+      <input id="task-input" placeholder="Add What To Do" />
+      <button id="add-btn" aria-label="Add task">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+  </footer>
+  <div id="undo-toast">
+    <button id="undo-btn" aria-label="Undo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F4F3EF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+    </button>
+  </div>
+
+  <div id="emoji-customize" aria-hidden="true">
+    <div id="emoji-customize-panel">
+      <div class="customize-head"><h2>Customize</h2></div>
+      <div class="my-emojis-box" id="my-emojis-box">
+        <div id="my-emojis"></div>
+      </div>
+      <div class="customize-scroll-body" id="customize-scroll-body">
+        <div id="available-emojis"></div>
+      </div>
+    </div>
+  </div>
+  <div id="emoji-drag-ghost"></div>
+  <div id="history-overlay">
+    <div id="history-panel">
+      <div class="history-head">
+        <h2>Today</h2>
+      </div>
+      <div id="history-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ROW_HEIGHT = 72;
+const ROW_GAP = 8;
+const ROW_PITCH = ROW_HEIGHT + ROW_GAP;
+const REORDER_THRESHOLD = 1.1;
+const DEMO_TASKS = [
+  { id: "demo1", text: "Finish maths homework", icon: "📚" },
+  { id: "demo2", text: "Buy groceries for the week", icon: "🛒" },
+];
+
+const STORAGE_KEY = "todo-list-tasks";
+
+function loadTasks() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return [...DEMO_TASKS];
+}
+
+function saveTasks() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+  } catch (e) {}
+}
+
+let tasks = loadTasks();
+let lastRemoved = null;
+let lastHistoryId = null;
+let undoTimer = null;
+let uid = 1;
+let activeGestureId = null;
+let historyPanelOpen = false;
+let tapTimer = null;
+let tapTaskId = null;
+
+const HISTORY_KEY = "todo-history-v1";
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function loadHistory() {
+  try {
+    const saved = localStorage.getItem(HISTORY_KEY);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === "object" && Array.isArray(parsed.entries) && parsed.date === todayStr()) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return { date: todayStr(), entries: [] };
+}
+
+function saveHistory() {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch (e) {}
+}
+
+let history = loadHistory();
+
+function ensureHistoryFresh() {
+  const t = todayStr();
+  if (history.date !== t) {
+    history = { date: t, entries: [] };
+    saveHistory();
+  }
+}
+
+function addHistoryEntry(task, action) {
+  ensureHistoryFresh();
+  const entry = { id: task.id + "-" + Date.now(), text: task.text, icon: task.icon, action };
+  history.entries.push(entry);
+  saveHistory();
+  if (historyPanelOpen) renderHistory();
+  return entry.id;
+}
+
+function scheduleMidnightReset() {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 2, 0);
+  setTimeout(() => {
+    ensureHistoryFresh();
+    if (historyPanelOpen) renderHistory();
+    scheduleMidnightReset();
+  }, next - now);
+}
+scheduleMidnightReset();
+
+const EMOJI_PICKER = [
+  "✅", "📚", "🛒", "❤️", "⚽", "⏰", "💰", "🏠",
+  "😀", "🤝", "🎬", "🛏️", "🚿", "🧹", "🍳", "🍎",
+  "☕", "🥦", "💼", "💻", "📰", "📱", "📝", "💬",
+  "🏃", "🪒", "👕", "🏦", "✈️", "🚗", "🏕️", "🌱",
+  "👨", "☀️", "🌷", "🐶", "🎉", "🎯", "📌", "🎨",
+  "🎵", "🎮", "📷", "📬", "🔧", "⚙️", "📄", "🎂"
+];
+const DEFAULT_ADDITIONAL = [
+  "🏡", "🚪", "🪟", "🪑", "🛌", "🧸", "🪞", "🧦", "🛁", "🧼", "🪥", "🧻", "🧽", "🪣", "🧺", "🧴",
+  "🥘", "🍲", "🔪", "🥄", "🍌", "🍕", "🍔", "🥗", "💧", "🥛", "🍵", "🧃", "🛍️", "🏷️", "🧾", "📦",
+  "🥕", "🌽", "🥔", "🧅", "📊", "📋", "📁", "🗂️", "🖥️", "⌨️", "🖱️", "🖨️", "📖", "✏️", "🎓", "🔬",
+  "📕", "📗", "📘", "📙", "🖊️", "🖋️", "📓", "📒", "💾", "💿", "🔌", "🔋", "☎️", "✉️", "📧", "📢",
+  "🚶", "🏋️", "🤸", "🚴", "🏀", "🎾", "🏏", "🏐", "🩺", "💊", "🩹", "🌡️", "💇", "💅", "🧖", "🪮",
+  "👖", "👗", "👔", "🧥", "💵", "💶", "💷", "💴", "🏧", "💳", "🪙", "📈", "🧳", "🗺️", "🧭", "🏨",
+  "🚕", "🚌", "🚆", "🚇", "🏖️", "🏞️", "🏜️", "🏔️", "🌳", "🌲", "🌻", "🌿", "🌤️", "☁️", "🌧️", "❄️",
+  "🌹", "🌼", "🌵", "🪴", "🐱", "🐭", "🐰", "🦊", "👩", "👶", "👴", "👵", "👋", "🙋", "🫂", "👥",
+  "🎈", "🥳", "🎊", "🪩", "⭐", "🏆", "🥇", "🚀", "📍", "🗒️", "🗓️", "🧮", "⌚", "⏱️", "⏳", "🕰️",
+  "🖌️", "🖍️", "✂️", "🧵", "🎶", "🎤", "🎸", "🎹", "🎥", "📺", "🎭", "🎟️", "🕹️", "🎲", "🃏", "🧩",
+  "📸", "🔍", "🖼️", "📹", "🚚", "🛻", "🛎️", "📮", "🔨", "🪛", "🪚", "🧰", "🔩", "🧲", "📏", "🔗",
+  "📃", "📜", "🗃️", "🗄️", "🎁", "💐", "💍", "🕯️", "😂", "😊", "😍", "😎", "❌", "➕", "➖", "🔄"
+];
+
+const listEl = document.getElementById("list");
+const inputEl = document.getElementById("task-input");
+const addBtn = document.getElementById("add-btn");
+const toastEl = document.getElementById("undo-toast");
+const undoBtn = document.getElementById("undo-btn");
+const emojiToggle = document.getElementById("emoji-toggle");
+const emojiPanel = document.getElementById("emoji-panel");
+const historyBtn = document.getElementById("history-btn");
+const historyOverlay = document.getElementById("history-overlay");
+const historyListEl = document.getElementById("history-list");
+const emojiEditBtn = document.getElementById("emoji-edit-btn");
+const emojiCustomize = document.getElementById("emoji-customize");
+const myEmojisBox = document.getElementById("my-emojis-box");
+const myEmojisEl = document.getElementById("my-emojis");
+const availableEmojisEl = document.getElementById("available-emojis");
+const customizeScrollBody = document.getElementById("customize-scroll-body");
+const emojiDragGhost = document.getElementById("emoji-drag-ghost");
+
+const CUSTOM_EMOJIS_KEY = "todo-custom-emojis-v2";
+const EXCHANGE_EMOJIS_KEY = "todo-exchange-emojis-v2";
+
+let myEmojis = loadCustomEmojis();
+let availableEmojis = 
